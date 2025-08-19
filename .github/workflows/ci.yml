@@ -1,0 +1,63 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linting
+      run: npm run lint
+    
+    - name: Run tests
+      run: npm test
+      env:
+        CI: true
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Create deployment package
+      run: |
+        cd build
+        tar -czf ../todo-app-build.tar.gz .
+        cd ..
+        ls -la todo-app-build.tar.gz
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: todo-app-build
+        path: todo-app-build.tar.gz
+        retention-days: 30
+    
+    - name: Generate deployment info
+      run: |
+        echo "Build completed at: $(date)" > deployment-info.txt
+        echo "Commit SHA: ${{ github.sha }}" >> deployment-info.txt
+        echo "Branch: ${{ github.ref_name }}" >> deployment-info.txt
+        echo "Repository: ${{ github.repository }}" >> deployment-info.txt
+    
+    - name: Upload deployment info
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-info
+        path: deployment-info.txt
+        retention-days: 30

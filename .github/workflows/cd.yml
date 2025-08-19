@@ -1,0 +1,122 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    env:
+      DEPLOY_PATH: /var/www/todo-app
+      BACKUP_PATH: /var/backups/todo-app
+      APP_NAME: todo-app
+    
+    steps:
+    - name: Download build artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: todo-app-build
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        run-id: ${{ github.event.workflow_run.id }}
+    
+    - name: Download deployment info
+      uses: actions/download-artifact@v4
+      with:
+        name: deployment-info
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        run-id: ${{ github.event.workflow_run.id }}
+    
+    - name: Display deployment info
+      run: |
+        echo "Starting deployment..."
+        cat deployment-info.txt
+    
+    - name: Create backup of current deployment
+      run: |
+        echo "Creating backup..."
+        sudo mkdir -p ${{ env.BACKUP_PATH }}
+        if [ -d "${{ env.DEPLOY_PATH }}" ] && [ "$(ls -A ${{ env.DEPLOY_PATH }})" ]; then
+          sudo cp -r ${{ env.DEPLOY_PATH }} ${{ env.BACKUP_PATH }}/backup-$(date +%Y%m%d-%H%M%S)
+          echo "Backup created successfully"
+        else
+          echo "No existing deployment to backup"
+        fi
+    
+    - name: Clean deployment directory
+      run: |
+        echo "Cleaning deployment directory..."
+        sudo rm -rf ${{ env.DEPLOY_PATH }}/*
+        sudo mkdir -p ${{ env.DEPLOY_PATH }}
+    
+    - name: Extract and deploy application
+      run: |
+        echo "Extracting and deploying application..."
+        sudo tar -xzf todo-app-build.tar.gz -C ${{ env.DEPLOY_PATH }}
+        
+        # Set proper permissions
+        sudo chown -R www-data:www-data ${{ env.DEPLOY_PATH }}
+        sudo chmod -R 755 ${{ env.DEPLOY_PATH }}
+        
+        # List deployed files
+        echo "Deployed files:"
+        ls -la ${{ env.DEPLOY_PATH }}
+    
+    - name: Test Nginx configuration
+      run: |
+        echo "Testing Nginx configuration..."
+        sudo nginx -t
+    
+    - name: Reload Nginx
+      run: |
+        echo "Reloading Nginx..."
+        sudo systemctl reload nginx
+        
+        # Check Nginx status
+        if sudo systemctl is-active --quiet nginx; then
+          echo "Nginx is running"
+        else
+          echo "Nginx failed to start"
+          sudo systemctl status nginx
+          exit 1
+        fi
+    
+    - name: Health check
+      run: |
+        echo "Running health check..."
+        sleep 3
+        
+        # Test local connection
+        if curl -f -s http://localhost/ > /dev/null; then
+          echo "Local health check passed"
+          
+          # Test if it's actually our app
+          if curl -s http://localhost/ | grep -q "Todo App"; then
+            echo "Application deployed successfully"
+          else
+            echo "Application deployed but content may not be correct"
+          fi
+        else
+          echo "Health check failed"
+          echo "Nginx error log:"
+          sudo tail -n 20 /var/log/nginx/error.log
+          exit 1
+        fi
+    
+    - name: Deployment summary
+      run: |
+        echo "Deployment Summary:"
+        echo "====================="
+        echo "Application: ${{ env.APP_NAME }}"
+        echo "Deploy Path: ${{ env.DEPLOY_PATH }}"
+        echo "Deployed at: $(date)"
+        echo "Status: SUCCESS"
+        echo ""
+        echo "Access your application at:"
+        echo "   - http://localhost/"
+        echo "   - http://$(hostname -I | awk '{print $1}')/"
