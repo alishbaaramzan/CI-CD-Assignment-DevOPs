@@ -25,17 +25,6 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         run-id: ${{ github.event.workflow_run.id }}
     
-    - name: Download deployment info
-      uses: actions/download-artifact@v4
-      with:
-        name: deployment-info
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        run-id: ${{ github.event.workflow_run.id }}
-    
-    - name: Display deployment info
-      run: |
-        echo "Starting deployment..."
-        cat deployment-info.txt
     
     - name: Create backup of current deployment
       run: |
@@ -108,15 +97,3 @@ jobs:
           exit 1
         fi
     
-    - name: Deployment summary
-      run: |
-        echo "Deployment Summary:"
-        echo "====================="
-        echo "Application: ${{ env.APP_NAME }}"
-        echo "Deploy Path: ${{ env.DEPLOY_PATH }}"
-        echo "Deployed at: $(date)"
-        echo "Status: SUCCESS"
-        echo ""
-        echo "Access your application at:"
-        echo "   - http://localhost/"
-        echo "   - http://$(hostname -I | awk '{print $1}')/"
